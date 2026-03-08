@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#F7F5F0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="メモ帳" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="description" content="シンプルでおしゃれなメモアプリ" />
+  <title>メモ帳</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --font: 'M PLUS Rounded 1c', sans-serif;
+      --bg: #F7F5F0; --text: #1A1A1A; --sub: #888;
+      --input-bg: #EEEAE4; --dark: #2A2A2A;
+    }
+    body {
+      font-family: var(--font); background: var(--bg); color: var(--text);
+      min-height: 100dvh; overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent; -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+    #app { max-width: 430px; margin: 0 auto; min-height: 100dvh; position: relative; overflow: hidden; }
+
+    /* LIST VIEW */
+    #list-view { display: flex; flex-direction: column; min-height: 100dvh; }
+    .list-header {
+      padding: max(env(safe-area-inset-top,0px),50px) 20px 14px;
+      background: var(--bg); position: sticky; top: 0; z-index: 10;
+    }
+    .header-row { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; }
+    .header-label { font-size: 11px; letter-spacing: .15em; color: #AAA; font-weight: 600; margin-bottom: 4px; }
+    .header-title { font-size: 28px; font-weight: 800; line-height: 1; }
+    .header-count { font-size: 13px; color: #AAA; }
+    .search-wrap { position: relative; }
+    .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); opacity: .4; pointer-events: none; }
+    #search-input {
+      width: 100%; background: var(--input-bg); border: none; border-radius: 14px;
+      padding: 12px 16px 12px 40px; font-size: 14px; font-family: var(--font);
+      color: var(--text); outline: none;
+    }
+    #search-input::placeholder { color: #BBB; }
+    /* タグバー: list-headerとは別のstickyブロックにしてoverflow-xを確保 */
+    .tags-sticky {
+      position: sticky; top: var(--header-h, 130px); z-index: 9;
+      background: var(--bg);
+    }
+    .tags-wrap {
+      display: flex; gap: 8px;
+      padding: 6px 20px 12px;
+      overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    .tags-wrap::-webkit-scrollbar { display: none; }
+    .tag-btn {
+      background: var(--input-bg); color: #666; border: none; border-radius: 20px;
+      padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+      white-space: nowrap; font-family: var(--font);
+      transition: background .2s, color .2s, box-shadow .2s, transform .15s;
+      flex-shrink: 0; min-height: 40px;
+    }
+    .tag-btn.all-tag {
+      font-size: 14px; padding: 9px 18px; /* 「すべて」だけ少し大きめ */
+    }
+    .tag-btn:hover  { box-shadow: 0 0 0 3px rgba(0,0,0,.08); transform: scale(1.04); }
+    .tag-btn:active { transform: scale(.95); }
+    .tag-btn.active { background: var(--dark); color: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.18); }
+    .tag-btn.active:hover { box-shadow: 0 0 0 3px rgba(0,0,0,.18), 0 2px 10px rgba(0,0,0,.18); }
+    /* 末尾スペーサー */
+    .tags-wrap::after { content: ''; display: block; min-width: 8px; flex-shrink: 0; }
+    .notes-list { padding: 0 20px 130px; flex: 1; }
+    .empty-state { text-align: center; color: #BBB; padding: 80px 0; font-size: 15px; }
+    .empty-icon { font-size: 52px; margin-bottom: 16px; }
+
+    /* NOTE CARD */
+    .note-card {
+      border-radius: 22px; padding: 22px; margin-bottom: 14px; cursor: pointer;
+      position: relative; transition: transform .15s, box-shadow .2s; border-width: 1px; border-style: solid;
+    }
+    .note-card:hover  { transform: scale(1.01); box-shadow: 0 6px 24px rgba(0,0,0,.1) !important; }
+    .note-card:active { transform: scale(.98); }
+    .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .card-tag { font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 20px; letter-spacing: .05em; }
+    .card-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 10px; margin-left: 6px; opacity: .75; }
+    .card-delete {
+      background: none; border: none; cursor: pointer; font-size: 22px; padding: 4px 8px;
+      line-height: 1; opacity: .4; min-width: 44px; min-height: 44px;
+      display:flex; align-items:center; justify-content:center;
+      border-radius: 50%; transition: opacity .15s, background .15s, transform .15s;
+    }
+    .card-delete:hover  { opacity: .9; background: rgba(220,70,70,.12); transform: scale(1.15); }
+    .card-delete:active { transform: scale(.9); }
+    .card-pin { position: absolute; top: 14px; right: 50px; font-size: 16px; opacity: .7; }
+    .card-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; line-height: 1.4; }
+    .card-body { font-size: 14px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .card-drawing { width: 100%; border-radius: 10px; margin-top: 8px; display: block; max-height: 120px; object-fit: cover; object-position: top; }
+    .card-time { margin-top: 12px; font-size: 12px; opacity: .7; }
+
+    /* FAB */
+    .fab {
+      position: fixed; bottom: calc(env(safe-area-inset-bottom,0px) + 28px);
+      left: 50%; transform: translateX(-50%);
+      width: calc(100% - 40px); max-width: 390px;
+      background: var(--dark); color: #fff; border: none; border-radius: 20px;
+      padding: 18px 0; font-size: 17px; font-weight: 700; cursor: pointer;
+      font-family: var(--font); box-shadow: 0 8px 30px rgba(0,0,0,.2);
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      transition: transform .15s, box-shadow .2s; z-index: 100;
+    }
+    .fab:hover  { box-shadow: 0 10px 36px rgba(0,0,0,.32); transform: translateX(-50%) scale(1.02); }
+    .fab:active { transform: translateX(-50%) scale(.97); box-shadow: 0 4px 16px rgba(0,0,0,.2); }
+
+    /* EDITOR VIEW */
+    #editor-view {
+      display: none; position: fixed; inset: 0; flex-direction: column;
+      z-index: 200;
+    }
+    #editor-view.visible { display: flex; animation: slideUp .28s cubic-bezier(.32,.72,0,1); }
+    #editor-view.closing { animation: slideDown .26s cubic-bezier(.32,.72,0,1) forwards; }
+    @keyframes slideUp   { from { transform: translateY(100%); } to { transform: none; } }
+    @keyframes slideDown { from { transform: none; }            to { transform: translateY(100%); } }
+
+    .editor-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: max(env(safe-area-inset-top,0px),16px);
+      padding-left: max(env(safe-area-inset-left,0px),20px);
+      padding-right: max(env(safe-area-inset-right,0px),20px);
+      padding-bottom: 14px;
+      border-bottom-width: 1px; border-bottom-style: solid; flex-shrink: 0;
+    }
+    .editor-back {
+      background: none; border: none; font-size: 16px; cursor: pointer;
+      font-family: var(--font); font-weight: 700; padding: 8px 12px; min-height: 44px;
+      border-radius: 12px; transition: background .15s, transform .15s;
+    }
+    .editor-back:hover  { background: rgba(0,0,0,.06); }
+    .editor-back:active { transform: scale(.94); }
+    .editor-actions { display: flex; gap: 10px; align-items: center; }
+    .pin-btn {
+      background: none; border: none; font-size: 24px; cursor: pointer; opacity: .4;
+      transition: opacity .15s, transform .15s, background .15s;
+      min-width: 44px; min-height: 44px; display:flex; align-items:center; justify-content:center;
+      border-radius: 50%;
+    }
+    .pin-btn:hover  { opacity: .75; background: rgba(0,0,0,.06); transform: scale(1.1); }
+    .pin-btn:active { transform: scale(.9); }
+    .pin-btn.pinned { opacity: 1; }
+    .pin-btn.pinned:hover { opacity: 1; }
+    .save-btn {
+      border: none; border-radius: 22px; padding: 10px 26px; font-size: 15px; font-weight: 700;
+      cursor: pointer; font-family: var(--font); color: #fff; min-height: 44px;
+      transition: filter .15s, transform .15s, box-shadow .15s;
+    }
+    .save-btn:hover  { filter: brightness(1.12); box-shadow: 0 4px 16px rgba(0,0,0,.2); transform: scale(1.03); }
+    .save-btn:active { transform: scale(.96); filter: brightness(.95); }
+
+    /* Mode tabs — pill switcher */
+    .mode-tabs {
+      display: flex; padding: 10px 20px; gap: 0; flex-shrink: 0;
+    }
+    .mode-tabs-inner {
+      display: flex; border-radius: 14px; overflow: hidden;
+      background: rgba(0,0,0,.07); padding: 3px; gap: 2px; width: 100%;
+    }
+    .mode-tab {
+      flex: 1; border: none; border-radius: 11px; padding: 10px 0;
+      font-size: 14px; font-weight: 700; cursor: pointer; font-family: var(--font);
+      transition: all .2s; background: transparent; color: inherit; opacity: .55;
+      min-height: 44px;
+    }
+    .mode-tab:hover  { opacity: .8; }
+    .mode-tab:active { transform: scale(.96); }
+    .mode-tab.active {
+      background: #fff; opacity: 1;
+      box-shadow: 0 1px 6px rgba(0,0,0,.12);
+    }
+
+    .editor-tags { display: flex; gap: 8px; padding: 12px 20px; overflow-x: auto; scrollbar-width: none; flex-shrink: 0; }
+    .editor-tags::-webkit-scrollbar { display: none; }
+    .etag-btn {
+      border: none; border-radius: 22px; padding: 9px 18px; font-size: 13px; font-weight: 600;
+      cursor: pointer; white-space: nowrap; font-family: var(--font); transition: all .15s;
+      flex-shrink: 0; min-height: 44px;
+    }
+    .etag-btn:hover  { filter: brightness(1.08); transform: scale(1.04); }
+    .etag-btn:active { transform: scale(.95); }
+
+    /* Text panel */
+    #text-panel { flex: 1; display: flex; flex-direction: column; padding: 8px 20px; overflow-y: auto; }
+    #editor-title { background: none; border: none; outline: none; font-family: var(--font); font-size: 22px; font-weight: 700; margin-bottom: 12px; width: 100%; }
+    #editor-body { background: none; border: none; outline: none; resize: none; flex: 1; font-family: var(--font); font-size: 15px; line-height: 1.8; min-height: 200px; opacity: .85; }
+
+    /* Draw panel */
+    #draw-panel { flex: 1; display: none; flex-direction: column; overflow: hidden; position: relative; }
+    #draw-panel.active { display: flex; }
+
+    /* Canvas fills everything */
+    .canvas-wrap { flex: 1; position: relative; overflow: hidden; }
+    #drawing-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; display: block; }
+
+    /* Floating toolbar pinned to bottom of canvas */
+    .draw-toolbar {
+      position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+      display: flex; align-items: center;
+      background: rgba(28,28,28,.9); backdrop-filter: blur(14px);
+      border-radius: 30px; padding: 6px 10px;
+      box-shadow: 0 6px 28px rgba(0,0,0,.3);
+      z-index: 10; gap: 2px;
+      max-width: calc(100% - 32px);
+    }
+    .tool-sep { width: 1px; height: 26px; background: rgba(255,255,255,.15); margin: 0 4px; flex-shrink: 0; }
+
+    /* Main tool buttons */
+    .tool-btn {
+      width: 52px; height: 52px; border-radius: 50%; border: 2.5px solid transparent;
+      cursor: pointer; font-size: 22px; font-family: var(--font);
+      display: flex; align-items: center; justify-content: center;
+      transition: all .15s; flex-shrink: 0; background: transparent; color: #fff;
+    }
+    .tool-btn:hover  { background: rgba(255,255,255,.12); box-shadow: 0 0 12px rgba(255,255,255,.18); transform: scale(1.08); }
+    .tool-btn.active { background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.55); }
+    .tool-btn.active:hover { box-shadow: 0 0 14px rgba(255,255,255,.25); transform: scale(1.08); }
+    .tool-btn:active { transform: scale(.88); }
+
+    /* Color preview button */
+    #color-preview-btn {
+      width: 52px; height: 52px; border-radius: 50%; border: 3px solid rgba(255,255,255,.55);
+      cursor: pointer; flex-shrink: 0; transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 0 0 1.5px rgba(0,0,0,.3);
+    }
+    #color-preview-btn:hover  { transform: scale(1.1); box-shadow: 0 0 14px rgba(255,255,255,.3), 0 0 0 1.5px rgba(0,0,0,.3); }
+    #color-preview-btn:active { transform: scale(.88); }
+
+    /* Size preview button */
+    #size-preview-btn {
+      width: 52px; height: 52px; border-radius: 50%; border: 2.5px solid transparent;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      background: transparent; flex-shrink: 0; transition: all .15s;
+    }
+    #size-preview-btn:hover  { background: rgba(255,255,255,.12); box-shadow: 0 0 12px rgba(255,255,255,.18); transform: scale(1.08); }
+    #size-preview-btn.open   { background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.55); }
+    #size-preview-btn:active { transform: scale(.88); }
+    #size-dot-preview { border-radius: 50%; background: #fff; transition: all .2s; }
+
+    /* Undo / Redo / Clear pill */
+    .action-btn {
+      height: 48px; border-radius: 24px; border: none;
+      cursor: pointer; font-family: var(--font); font-size: 18px; font-weight: 700;
+      padding: 0 14px; flex-shrink: 0; transition: all .15s;
+      display: flex; align-items: center; gap: 3px; min-width: 48px; justify-content: center;
+    }
+    .undo-pill { background: rgba(255,255,255,.12); color: rgba(255,255,255,.9); }
+    .undo-pill:hover  { background: rgba(255,255,255,.22); box-shadow: 0 0 10px rgba(255,255,255,.15); transform: scale(1.06); }
+    .undo-pill:active { background: rgba(255,255,255,.22); transform: scale(.95); }
+    .undo-pill:disabled { opacity: .3; pointer-events: none; }
+    .redo-pill { background: rgba(255,255,255,.12); color: rgba(255,255,255,.9); }
+    .redo-pill:hover  { background: rgba(255,255,255,.22); box-shadow: 0 0 10px rgba(255,255,255,.15); transform: scale(1.06); }
+    .redo-pill:active { background: rgba(255,255,255,.22); transform: scale(.95); }
+    .redo-pill:disabled { opacity: .3; pointer-events: none; }
+    .clear-pill { background: rgba(220,70,70,.28); color: #FF9090; }
+    .clear-pill:hover  { background: rgba(220,70,70,.42); box-shadow: 0 0 12px rgba(220,70,70,.3); transform: scale(1.06); }
+    .clear-pill:active { background: rgba(220,70,70,.45); transform: scale(.95); }
+
+    /* Color popover */
+    #color-panel {
+      position: absolute; bottom: 84px; left: 50%; transform: translateX(-50%);
+      background: rgba(28,28,28,.92); backdrop-filter: blur(14px);
+      border-radius: 22px; padding: 14px 16px;
+      display: none; flex-wrap: wrap; gap: 11px; justify-content: center;
+      width: 220px; z-index: 20;
+      box-shadow: 0 6px 24px rgba(0,0,0,.35);
+      animation: popUp .18s ease;
+    }
+    #color-panel.visible { display: flex; }
+
+    /* Size popover */
+    #size-panel {
+      position: absolute; bottom: 84px; left: 50%; transform: translateX(-50%);
+      background: rgba(28,28,28,.92); backdrop-filter: blur(14px);
+      border-radius: 22px; padding: 10px 12px 12px;
+      display: none; flex-direction: column; align-items: center; gap: 8px;
+      z-index: 20; box-shadow: 0 6px 24px rgba(0,0,0,.35);
+      animation: popUp .18s ease;
+    }
+    #size-panel.visible { display: flex; }
+    #size-panel-label {
+      font-size: 11px; font-family: var(--font); font-weight: 700;
+      color: rgba(255,255,255,.45); letter-spacing: .06em;
+    }
+    #size-panel-btns { display: flex; flex-direction: row; gap: 4px; align-items: center; }
+
+    @keyframes popUp { from { opacity:0; transform:translateX(-50%) translateY(8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+
+    /* Color swatches inside popover */
+    .pen-color-swatch {
+      width: 36px; height: 36px; border-radius: 50%; cursor: pointer; flex-shrink: 0;
+      border: 2.5px solid transparent; transition: transform .15s, border-color .15s;
+    }
+    .pen-color-swatch.active { border-color: #fff; transform: scale(1.18); box-shadow: 0 0 0 2px rgba(255,255,255,.25); }
+    .pen-color-swatch:active { transform: scale(.9); }
+
+    /* Size buttons inside popover */
+    .size-opt {
+      width: 52px; height: 52px; border-radius: 50%; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      border: 2.5px solid transparent; background: transparent; transition: all .15s;
+    }
+    .size-opt.active { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.55); }
+    .size-opt:active { transform: scale(.9); }
+    .size-opt-dot { border-radius: 50%; background: #fff; }
+
+    /* Bottom color picker */
+    .color-picker {
+      display: flex; justify-content: center; gap: 14px;
+      padding-top: 16px;
+      padding-bottom: max(env(safe-area-inset-bottom,0px),18px);
+      padding-left: max(env(safe-area-inset-left,0px),20px);
+      padding-right: max(env(safe-area-inset-right,0px),20px);
+      flex-shrink: 0; border-top-width: 1px; border-top-style: solid;
+    }
+    .color-dot {
+      width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+      border-width: 2px; border-style: solid; transition: transform .15s;
+    }
+    .color-dot.selected { transform: scale(1.25); border-width: 3px; }
+
+    /* Install toast */
+    #install-toast {
+      position: fixed; bottom: calc(env(safe-area-inset-bottom,0px) + 110px);
+      left: 50%; transform: translateX(-50%);
+      background: #2A2A2A; color: #fff; padding: 12px 20px; border-radius: 14px;
+      font-size: 13px; font-family: var(--font); font-weight: 600;
+      display: none; align-items: center; gap: 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.25); z-index: 300; white-space: nowrap; cursor: pointer;
+      animation: fadeIn .3s ease;
+    }
+    #install-toast.visible { display: flex; }
+    @keyframes fadeIn { from { opacity:0; transform:translateX(-50%) translateY(10px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LIST VIEW -->
+  <div id="list-view">
+    <div class="list-header" id="list-header">
+      <div class="header-row">
+        <div>
+          <div class="header-label">MY NOTES</div>
+          <div class="header-title">メモ帳</div>
+        </div>
+        <div class="header-count" id="note-count">0件</div>
+      </div>
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input id="search-input" type="search" placeholder="検索..." autocomplete="off" />
+      </div>
+    </div>
+    <div class="tags-sticky">
+      <div class="tags-wrap" id="tag-filters"></div>
+    </div>
+    <div class="notes-list" id="notes-list"></div>
+    <button class="fab" id="new-btn"><span style="font-size:22px;font-weight:300">+</span> 新しいメモ</button>
+  </div>
+
+  <!-- EDITOR VIEW -->
+  <div id="editor-view">
+    <div class="editor-header" id="editor-header">
+      <button class="editor-back" id="editor-back">← 戻る</button>
+      <div class="editor-actions">
+        <button class="pin-btn" id="pin-btn">📌</button>
+        <button class="save-btn" id="save-btn">保存</button>
+      </div>
+    </div>
+
+    <div class="mode-tabs">
+      <div class="mode-tabs-inner">
+        <button class="mode-tab active" data-mode="text">✏️ テキスト</button>
+        <button class="mode-tab" data-mode="draw">🎨 お絵かき</button>
+      </div>
+    </div>
+
+    <div class="editor-tags" id="editor-tags"></div>
+
+    <!-- Text panel -->
+    <div id="text-panel">
+      <input id="editor-title" type="text" placeholder="タイトル（任意）" />
+      <textarea id="editor-body" placeholder="メモを入力..."></textarea>
+    </div>
+
+    <!-- Draw panel -->
+    <div id="draw-panel">
+      <div class="canvas-wrap">
+        <canvas id="drawing-canvas"></canvas>
+
+        <!-- Popovers (inside canvas-wrap so they sit above canvas) -->
+        <div id="color-panel"></div>
+        <div id="size-panel"></div>
+
+        <!-- Floating toolbar -->
+        <div class="draw-toolbar" id="draw-toolbar">
+          <!-- Pen -->
+          <button class="tool-btn active" id="tool-pen" title="ペン">🖊️</button>
+          <!-- Highlighter -->
+          <button class="tool-btn" id="tool-hl" title="蛍光ペン">🖍️</button>
+          <!-- Eraser -->
+          <button class="tool-btn" id="tool-eraser" title="消しゴム">🧽</button>
+          <div class="tool-sep"></div>
+          <!-- Color picker trigger -->
+          <button id="color-preview-btn" title="色を選ぶ"></button>
+          <!-- Size picker trigger -->
+          <button id="size-preview-btn" title="太さ・薄さ"><div id="size-dot-preview"></div></button>
+          <div class="tool-sep"></div>
+          <!-- Undo / Redo -->
+          <button class="action-btn undo-pill" id="undo-btn" title="元に戻す">↩</button>
+          <button class="action-btn redo-pill" id="redo-btn" title="やり直す">↪</button>
+          <!-- Clear -->
+          <button class="action-btn clear-pill" id="clear-btn">🗑</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="color-picker" id="color-picker"></div>
+  </div>
+
+  <div id="install-toast">📲 ホーム画面に追加できます</div>
+</div>
+
+<script>
+// ── CONSTANTS ──────────────────────────────────────────────
+const CARD_COLORS = [
+  { name:"sand",  bg:"#F5F0E8", accent:"#C8A882" },
+  { name:"sage",  bg:"#E8EFE6", accent:"#7A9E7E" },
+  { name:"dusk",  bg:"#EAE6F0", accent:"#9B89B4" },
+  { name:"blush", bg:"#F5E8E8", accent:"#C98B8B" },
+  { name:"slate", bg:"#1C1E26", accent:"#6B8CAE" },
+];
+const TAGS = ["仕事","プライベート","TODO","メモ"];
+const ALL_TAGS = ["すべて",...TAGS];
+const PEN_COLORS = ["#1A1A1A","#E85454","#E87F2C","#D4A020","#4CAF50","#2196F3","#9C27B0","#E91E8C","#795548","#FFFFFF"];
+
+// ── STATE ──────────────────────────────────────────────────
+let notes=[], activeTag="すべて", searchQuery="", editingId=null;
+let editorColor=0, editorPinned=false, editorTag=TAGS[0], editorMode="text";
+let deferredPrompt=null;
+let isDrawing=false, drawTool="pen", penSize=3, eraserSize=16, penColor="#1A1A1A";
+let hlSize=16, penOpacity=1.0, hlOpacity=0.4;
+let drawStrokes=[], redoStack=[], currentStroke=null;
+
+// ── STORAGE ────────────────────────────────────────────────
+function saveNotes(){ try{ localStorage.setItem("mnv4",JSON.stringify(notes)); }catch(e){} }
+function loadNotes(){
+  try{
+    const raw=localStorage.getItem("mnv4");
+    if(raw){ notes=JSON.parse(raw).map(n=>({...n,createdAt:new Date(n.createdAt),updatedAt:new Date(n.updatedAt)})); }
+    else{
+      notes=[
+        {id:1,title:"週次レビュー",body:"今週のタスクを振り返り、来週の目標を設定する。重要な締め切りを忘れないこと。",drawing:null,drawStrokes:null,tag:"仕事",color:0,pinned:true,createdAt:new Date(Date.now()-172800000),updatedAt:new Date(Date.now()-3600000)},
+        {id:2,title:"買い物リスト",body:"牛乳、卵、パン、野菜（にんじん・ほうれん草）、洗剤",drawing:null,drawStrokes:null,tag:"プライベート",color:1,pinned:false,createdAt:new Date(Date.now()-86400000),updatedAt:new Date(Date.now()-7200000)},
+        {id:3,title:"新しいアイデア",body:"位置情報と連携したリマインダー機能。",drawing:null,drawStrokes:null,tag:"メモ",color:2,pinned:false,createdAt:new Date(Date.now()-432000000),updatedAt:new Date(Date.now()-86400000)},
+      ];
+      saveNotes();
+    }
+  }catch(e){ notes=[]; }
+}
+
+// ── UTILS ──────────────────────────────────────────────────
+function timeAgo(d){ const s=Math.floor((Date.now()-d)/1000); if(s<60)return"たった今"; if(s<3600)return`${Math.floor(s/60)}分前`; if(s<86400)return`${Math.floor(s/3600)}時間前`; return`${Math.floor(s/86400)}日前`; }
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ── RENDER LIST ────────────────────────────────────────────
+function renderTagFilters(){
+  const w=document.getElementById("tag-filters");
+  w.innerHTML=ALL_TAGS.map(t=>`<button class="tag-btn${activeTag===t?" active":""}${t==="すべて"?" all-tag":""}" data-tag="${esc(t)}">${esc(t)}</button>`).join("");
+  w.querySelectorAll(".tag-btn").forEach(b=>b.addEventListener("click",()=>{activeTag=b.dataset.tag;renderAll();}));
+}
+function renderNotes(){
+  const list=document.getElementById("notes-list");
+  const q=searchQuery.toLowerCase();
+  const filtered=notes
+    .filter(n=>activeTag==="すべて"||n.tag===activeTag)
+    .filter(n=>!q||n.title.toLowerCase().includes(q)||n.body.toLowerCase().includes(q))
+    .sort((a,b)=>b.updatedAt-a.updatedAt);
+  document.getElementById("note-count").textContent=`${notes.length}件`;
+  if(!filtered.length){ list.innerHTML=`<div class="empty-state"><div class="empty-icon">📝</div>メモがありません</div>`; return; }
+  list.innerHTML=filtered.map(n=>{
+    const c=CARD_COLORS[n.color], isDark=n.color===4;
+    const tc=isDark?"#E8E8F0":"#2A2A2A", sc=isDark?"#8888AA":"#888888";
+    return `<div class="note-card" data-id="${n.id}" style="background:${c.bg};box-shadow:0 2px 12px ${c.accent}22;border-color:${c.accent}33">
+      ${n.pinned?`<div class="card-pin">📌</div>`:""}
+      <div class="card-top">
+        <div style="display:flex;align-items:center">
+          <span class="card-tag" style="color:${c.accent};background:${c.accent}18">${esc(n.tag)}</span>
+          ${n.drawing?`<span class="card-badge" style="color:${c.accent};background:${c.accent}15">🎨 お絵かき</span>`:""}
+        </div>
+        <button class="card-delete" data-id="${n.id}" style="color:${sc}">×</button>
+      </div>
+      ${n.title?`<div class="card-title" style="color:${tc}">${esc(n.title)}</div>`:""}
+      ${n.body?`<div class="card-body" style="color:${sc}">${esc(n.body)}</div>`:""}
+      ${n.drawing?`<img class="card-drawing" src="${n.drawing}" />`:""}
+      <div class="card-time" style="color:${sc}">${timeAgo(n.updatedAt)}</div>
+    </div>`;
+  }).join("");
+  list.querySelectorAll(".note-card").forEach(el=>el.addEventListener("click",e=>{
+    if(e.target.classList.contains("card-delete"))return;
+    openEditor(parseInt(el.dataset.id));
+  }));
+  list.querySelectorAll(".card-delete").forEach(b=>b.addEventListener("click",e=>{
+    e.stopPropagation(); deleteNote(parseInt(b.dataset.id));
+  }));
+}
+function renderAll(){ renderTagFilters(); renderNotes(); }
+function deleteNote(id){
+  if(!confirm("このメモを削除しますか？")) return;
+  notes=notes.filter(n=>n.id!==id); saveNotes(); renderAll();
+}
+
+// ── EDITOR ─────────────────────────────────────────────────
+// スナップショット（開いた時点の状態）
+let _snapTitle='', _snapBody='', _snapStrokes='';
+
+function openEditor(id){
+  const note=id?notes.find(n=>n.id===id):null;
+  editingId=id||null; editorColor=note?.color??0; editorPinned=note?.pinned??false; editorTag=note?.tag??TAGS[0];
+  document.getElementById("editor-title").value=note?.title??"";
+  document.getElementById("editor-body").value=note?.body??"";
+  drawStrokes=note?.drawStrokes?JSON.parse(JSON.stringify(note.drawStrokes)):[];
+  redoStack=[];
+  // スナップショット保存
+  _snapTitle=note?.title??""; _snapBody=note?.body??""; _snapStrokes=JSON.stringify(drawStrokes);
+  applyEditorTheme(); renderEditorTags(); renderColorPicker(); updatePinBtn();
+  setEditorMode("text");
+  const v=document.getElementById("editor-view");
+  v.classList.remove("closing");
+  v.classList.add("visible");
+  requestAnimationFrame(()=>{ resizeCanvas(); redrawCanvas(); });
+  document.getElementById("editor-body").focus();
+}
+
+function hasUnsavedChanges(){
+  const title=document.getElementById("editor-title").value.trim();
+  const body=document.getElementById("editor-body").value.trim();
+  const strokesNow=JSON.stringify(drawStrokes);
+  // 新規メモで何か入力があれば未保存
+  if(!editingId) return !!(title||body||drawStrokes.length);
+  // 既存メモで変化があれば未保存
+  return title!==_snapTitle||body!==_snapBody||strokesNow!==_snapStrokes;
+}
+
+function closeEditor(force=false){
+  if(!force && hasUnsavedChanges()){
+    if(!confirm("変更が保存されていません。\n破棄して戻りますか？")) return;
+  }
+  const v=document.getElementById("editor-view");
+  v.classList.add("closing");
+  v.addEventListener("animationend",()=>{
+    v.classList.remove("visible","closing");
+    editingId=null;
+  },{once:true});
+}
+
+function applyEditorTheme(){
+  const c=CARD_COLORS[editorColor], isDark=editorColor===4;
+  const tc=isDark?"#E8E8F0":"#2A2A2A";
+  const v=document.getElementById("editor-view");
+  v.style.background=c.bg;
+  document.getElementById("editor-header").style.borderBottomColor=c.accent+"22";
+  document.getElementById("editor-back").style.color=c.accent;
+  document.getElementById("save-btn").style.background=c.accent;
+  ["editor-title","editor-body"].forEach(id=>{ const el=document.getElementById(id); el.style.color=tc; el.style.caretColor=c.accent; });
+  document.querySelectorAll(".mode-tabs-inner").forEach(inner=>{
+    inner.style.background=c.accent+"18";
+  });
+  document.querySelectorAll(".mode-tab").forEach(t=>{
+    const active=t.classList.contains("active");
+    t.style.background=active?c.bg:"transparent";
+    t.style.color=active?c.accent:c.accent+"99";
+    t.style.boxShadow=active?`0 1px 6px ${c.accent}33`:"none";
+  });
+  document.getElementById("color-picker").style.borderTopColor=c.accent+"22";
+  document.getElementById("drawing-canvas").style.background=c.bg;
+}
+
+function setEditorMode(mode){
+  editorMode=mode;
+  document.getElementById("text-panel").style.display=mode==="text"?"flex":"none";
+  const dp=document.getElementById("draw-panel");
+  mode==="draw"?dp.classList.add("active"):dp.classList.remove("active");
+  document.querySelectorAll(".mode-tab").forEach(t=>{
+    t.classList.toggle("active",t.dataset.mode===mode);
+  });
+  if(mode==="draw") requestAnimationFrame(()=>{ resizeCanvas(); redrawCanvas(); });
+  applyEditorTheme();
+}
+
+function renderEditorTags(){
+  const c=CARD_COLORS[editorColor];
+  const w=document.getElementById("editor-tags");
+  w.innerHTML=TAGS.map(t=>`<button class="etag-btn" data-tag="${esc(t)}" style="background:${editorTag===t?c.accent:c.accent+"18"};color:${editorTag===t?"#fff":c.accent}">${esc(t)}</button>`).join("");
+  w.querySelectorAll(".etag-btn").forEach(b=>b.addEventListener("click",()=>{ editorTag=b.dataset.tag; renderEditorTags(); }));
+}
+
+function renderColorPicker(){
+  const p=document.getElementById("color-picker");
+  p.innerHTML=CARD_COLORS.map((c,i)=>`<button class="color-dot${editorColor===i?" selected":""}" data-i="${i}" style="background:${c.bg};border-color:${editorColor===i?c.accent:c.accent+"55"};${editorColor===i?`box-shadow:0 0 0 2px ${c.accent}44`:""}"></button>`).join("");
+  p.querySelectorAll(".color-dot").forEach(b=>b.addEventListener("click",()=>{ editorColor=parseInt(b.dataset.i); applyEditorTheme(); renderEditorTags(); renderColorPicker(); redrawCanvas(); }));
+}
+
+function renderPenColors(){
+  // Renders color swatches into the color popover panel
+  const panel=document.getElementById("color-panel");
+  panel.innerHTML=PEN_COLORS.map(col=>
+    `<button class="pen-color-swatch${penColor===col?" active":""}" data-col="${col}"
+      style="background:${col};${col==="#FFFFFF"?"outline:1.5px solid rgba(255,255,255,.4)":""}"
+    ></button>`
+  ).join("");
+  panel.querySelectorAll(".pen-color-swatch").forEach(b=>b.addEventListener("click",()=>{
+    penColor=b.dataset.col; drawTool="pen";
+    updateToolUI(); renderPenColors(); closePopovers();
+  }));
+  // Update the preview button color
+  document.getElementById("color-preview-btn").style.background=penColor;
+}
+
+function renderSizePanel(){
+  const SIZES=[{s:3,d:4},{s:6,d:8},{s:12,d:14},{s:24,d:20}];
+  const HL_SIZES=[{s:8,d:8},{s:16,d:13},{s:28,d:18},{s:40,d:22}];
+  const isEraser=drawTool==="eraser", isHl=drawTool==="hl";
+  const sizes=isHl?HL_SIZES:SIZES;
+  const currentSize=isEraser?eraserSize:isHl?hlSize:penSize;
+  const label=isEraser?"消しゴムの大きさ":isHl?"蛍光ペンの太さ":"ペンの太さ";
+  const panel=document.getElementById("size-panel");
+
+  let opacityHtml="";
+  if(isHl){
+    opacityHtml=`
+      <div style="width:100%;padding:4px 4px 0;display:flex;flex-direction:column;gap:6px;">
+        <div style="font-size:11px;font-family:var(--font);font-weight:700;color:rgba(255,255,255,.45);letter-spacing:.06em;text-align:center">薄さ</div>
+        <div style="display:flex;align-items:center;gap:8px;padding:0 2px">
+          <span style="font-size:10px;color:rgba(255,255,255,.4);font-family:var(--font)">濃</span>
+          <input type="range" id="hl-opacity-slider" min="15" max="80" value="${Math.round(hlOpacity*100)}"
+            style="flex:1;accent-color:#fff;height:4px;cursor:pointer"/>
+          <span style="font-size:10px;color:rgba(255,255,255,.4);font-family:var(--font)">薄</span>
+        </div>
+      </div>`;
+  }
+
+  panel.innerHTML=
+    `<div id="size-panel-label">${label}</div>`+
+    `<div id="size-panel-btns">`+
+    sizes.map(({s,d})=>
+      `<button class="size-opt${currentSize===s?" active":""}" data-size="${s}">
+        <div class="size-opt-dot" style="width:${d}px;height:${d}px;border-radius:${isHl?"2px":"50%"}"></div>
+      </button>`
+    ).join("")+
+    `</div>`+opacityHtml;
+
+  panel.querySelectorAll(".size-opt").forEach(b=>b.addEventListener("click",()=>{
+    const sz=parseInt(b.dataset.size);
+    if(isEraser) eraserSize=sz; else if(isHl) hlSize=sz; else penSize=sz;
+    updateToolUI(); renderSizePanel();
+  }));
+
+  if(isHl){
+    const slider=document.getElementById("hl-opacity-slider");
+    if(slider) slider.addEventListener("input",()=>{
+      hlOpacity=parseInt(slider.value)/100;
+      updateToolUI();
+    });
+    // prevent canvas touch from closing panel when touching slider
+    slider?.addEventListener("touchstart",e=>e.stopPropagation(),{passive:true});
+  }
+
+  // Update preview dot
+  const dotSrc=isEraser?eraserSize:isHl?hlSize:penSize;
+  const dotSize=Math.max(4,Math.min(dotSrc,20));
+  const dp=document.getElementById("size-dot-preview");
+  if(dp){ dp.style.width=dotSize+"px"; dp.style.height=dotSize+"px"; }
+}
+
+let openPanel=null;
+function closePopovers(){
+  document.getElementById("color-panel").classList.remove("visible");
+  document.getElementById("size-panel").classList.remove("visible");
+  document.getElementById("size-preview-btn").classList.remove("open");
+  openPanel=null;
+}
+function togglePanel(name){
+  const colorP=document.getElementById("color-panel");
+  const sizeP=document.getElementById("size-panel");
+  if(openPanel===name){ closePopovers(); return; }
+  colorP.classList.remove("visible"); sizeP.classList.remove("visible");
+  document.getElementById("size-preview-btn").classList.remove("open");
+  if(name==="color"){ renderPenColors(); colorP.classList.add("visible"); }
+  else{ renderSizePanel(); sizeP.classList.add("visible"); document.getElementById("size-preview-btn").classList.add("open"); }
+  openPanel=name;
+}
+
+function updatePinBtn(){ document.getElementById("pin-btn").classList.toggle("pinned",editorPinned); }
+
+function saveNote(){
+  const title=document.getElementById("editor-title").value.trim();
+  const body=document.getElementById("editor-body").value.trim();
+  const hasDrawing=drawStrokes.length>0;
+  const drawing=hasDrawing?getCanvasDataURL():null;
+  const strokesToSave=hasDrawing?JSON.parse(JSON.stringify(drawStrokes)):null;
+  if(!title&&!body&&!drawing) return closeEditor();
+  const data={title,body,drawing,drawStrokes:strokesToSave,tag:editorTag,color:editorColor,pinned:editorPinned,updatedAt:new Date()};
+  if(editingId){ notes=notes.map(n=>n.id===editingId?{...n,...data}:n); }
+  else{ notes.unshift({id:Date.now(),...data,createdAt:new Date()}); }
+  saveNotes(); closeEditor(true); renderAll();
+}
+
+// ── CANVAS ─────────────────────────────────────────────────
+const canvas=document.getElementById("drawing-canvas");
+const ctx=canvas.getContext("2d");
+// 蛍光ペン用オフスクリーンキャンバス（ストローク中の重複を防ぐ）
+let hlCanvas=null, hlCtx=null;
+
+function getOrCreateHlCanvas(){
+  if(!hlCanvas||hlCanvas.width!==canvas.width||hlCanvas.height!==canvas.height){
+    hlCanvas=document.createElement("canvas");
+    hlCanvas.width=canvas.width; hlCanvas.height=canvas.height;
+    hlCtx=hlCanvas.getContext("2d");
+  } else { hlCtx.clearRect(0,0,hlCanvas.width,hlCanvas.height); }
+  return hlCtx;
+}
+
+function resizeCanvas(){
+  const w=canvas.parentElement; if(!w) return;
+  const cw=w.clientWidth, ch=w.clientHeight;
+  if(canvas.width===cw&&canvas.height===ch) return;
+  canvas.width=cw; canvas.height=ch;
+  hlCanvas=null; // オフスクリーンもリセット
+  redrawCanvas();
+}
+
+function redrawCanvas(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const c=CARD_COLORS[editorColor];
+  ctx.fillStyle=c.bg; ctx.fillRect(0,0,canvas.width,canvas.height);
+  drawStrokes.forEach(s=>renderStroke(s));
+}
+
+function renderStroke(s){
+  if(!s.points.length) return;
+  if(s.tool==="hl"){
+    // 一本のパスをオフスクリーンに不透明で描き、alpha付きでmultiply合成
+    const tmp=document.createElement("canvas");
+    tmp.width=canvas.width; tmp.height=canvas.height;
+    const tc=tmp.getContext("2d");
+    const r=parseInt(s.color.slice(1,3),16),g=parseInt(s.color.slice(3,5),16),b=parseInt(s.color.slice(5,7),16);
+    tc.strokeStyle=`rgba(${r},${g},${b},1)`;
+    tc.lineWidth=s.size; tc.lineCap="square"; tc.lineJoin="round";
+    const pts=s.points;
+    tc.beginPath(); tc.moveTo(pts[0].x,pts[0].y);
+    for(let i=1;i<pts.length-1;i++){
+      const mx=(pts[i].x+pts[i+1].x)/2, my=(pts[i].y+pts[i+1].y)/2;
+      tc.quadraticCurveTo(pts[i].x,pts[i].y,mx,my);
+    }
+    if(pts.length>1) tc.lineTo(pts[pts.length-1].x,pts[pts.length-1].y);
+    else tc.arc(pts[0].x,pts[0].y,s.size/2,0,Math.PI*2);
+    tc.stroke();
+    ctx.save();
+    ctx.globalCompositeOperation="multiply";
+    ctx.globalAlpha=s.opacity??0.4;
+    ctx.drawImage(tmp,0,0);
+    ctx.restore();
+    return;
+  }
+  ctx.save();
+  if(s.tool==="eraser"){
+    ctx.globalCompositeOperation="destination-out";
+    ctx.strokeStyle="rgba(0,0,0,1)"; ctx.fillStyle="rgba(0,0,0,1)";
+  } else {
+    ctx.globalCompositeOperation="source-over";
+    const op=s.opacity??1;
+    const r=parseInt(s.color.slice(1,3),16),g=parseInt(s.color.slice(3,5),16),b=parseInt(s.color.slice(5,7),16);
+    ctx.strokeStyle=`rgba(${r},${g},${b},${op})`;
+    ctx.fillStyle=ctx.strokeStyle;
+  }
+  ctx.lineWidth=s.size; ctx.lineCap="round"; ctx.lineJoin="round";
+  const pts=s.points;
+  ctx.beginPath();
+  if(pts.length===1){ ctx.arc(pts[0].x,pts[0].y,s.size/2,0,Math.PI*2); ctx.fill(); }
+  else{
+    ctx.moveTo(pts[0].x,pts[0].y);
+    for(let i=1;i<pts.length-1;i++){
+      const mx=(pts[i].x+pts[i+1].x)/2, my=(pts[i].y+pts[i+1].y)/2;
+      ctx.quadraticCurveTo(pts[i].x,pts[i].y,mx,my);
+    }
+    ctx.lineTo(pts[pts.length-1].x,pts[pts.length-1].y);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function getPos(e){
+  const r=canvas.getBoundingClientRect();
+  const s=e.touches?e.touches[0]:e;
+  return{x:s.clientX-r.left,y:s.clientY-r.top};
+}
+
+function onStart(e){
+  e.preventDefault();
+  const sz = drawTool==="eraser" ? eraserSize : drawTool==="hl" ? hlSize : penSize;
+  const op = drawTool==="hl" ? hlOpacity : penOpacity;
+  currentStroke={tool:drawTool, color:penColor, size:sz, opacity:op, points:[getPos(e)]};
+  isDrawing=true;
+  // 蛍光ペンはオフスクリーンを初期化
+  if(drawTool==="hl") getOrCreateHlCanvas();
+}
+
+function drawHlToOffscreen(pts){
+  // オフスクリーンに全ポイントを一本のパスで描く（重複なし）
+  const hc=getOrCreateHlCanvas();
+  hc.clearRect(0,0,hlCanvas.width,hlCanvas.height);
+  const r=parseInt(currentStroke.color.slice(1,3),16),g=parseInt(currentStroke.color.slice(3,5),16),b=parseInt(currentStroke.color.slice(5,7),16);
+  hc.strokeStyle=`rgba(${r},${g},${b},1)`; // オフスクリーンは不透明で描く
+  hc.lineWidth=currentStroke.size; hc.lineCap="square"; hc.lineJoin="round";
+  hc.beginPath();
+  hc.moveTo(pts[0].x,pts[0].y);
+  for(let i=1;i<pts.length-1;i++){
+    const mx=(pts[i].x+pts[i+1].x)/2, my=(pts[i].y+pts[i+1].y)/2;
+    hc.quadraticCurveTo(pts[i].x,pts[i].y,mx,my);
+  }
+  if(pts.length>1) hc.lineTo(pts[pts.length-1].x,pts[pts.length-1].y);
+  hc.stroke();
+  // メインキャンバスを再描画してオフスクリーンをalpha合成で乗せる
+  redrawCanvas();
+  ctx.save();
+  ctx.globalCompositeOperation="multiply";
+  ctx.globalAlpha=currentStroke.opacity??0.4;
+  ctx.drawImage(hlCanvas,0,0);
+  ctx.restore();
+}
+
+function onMove(e){
+  if(!isDrawing||!currentStroke) return;
+  e.preventDefault();
+  currentStroke.points.push(getPos(e));
+  const pts=currentStroke.points, l=pts.length;
+  if(currentStroke.tool==="hl"){
+    // 蛍光ペン: オフスクリーンに全点を一気に描く
+    drawHlToOffscreen(pts);
+    return;
+  }
+  if(l<2) return;
+  ctx.save();
+  if(currentStroke.tool==="eraser"){
+    ctx.globalCompositeOperation="destination-out";
+    ctx.strokeStyle="rgba(0,0,0,1)";
+    ctx.lineCap="round"; ctx.lineJoin="round";
+  } else {
+    ctx.globalCompositeOperation="source-over";
+    const op=currentStroke.opacity??1;
+    const r=parseInt(currentStroke.color.slice(1,3),16),g=parseInt(currentStroke.color.slice(3,5),16),b=parseInt(currentStroke.color.slice(5,7),16);
+    ctx.strokeStyle=`rgba(${r},${g},${b},${op})`;
+    ctx.lineCap="round"; ctx.lineJoin="round";
+  }
+  ctx.lineWidth=currentStroke.size;
+  ctx.beginPath();
+  if(l>=3){ ctx.moveTo(pts[l-3].x,pts[l-3].y); const mx=(pts[l-2].x+pts[l-1].x)/2, my=(pts[l-2].y+pts[l-1].y)/2; ctx.quadraticCurveTo(pts[l-2].x,pts[l-2].y,mx,my); }
+  else{ ctx.moveTo(pts[l-2].x,pts[l-2].y); ctx.lineTo(pts[l-1].x,pts[l-1].y); }
+  ctx.stroke(); ctx.restore();
+}
+
+function onEnd(e){
+  if(!isDrawing||!currentStroke) return;
+  e.preventDefault();
+  // 蛍光ペンはストローク完了時にredrawCanvasで確定（オフスクリーン結果をstrokesとして記録）
+  if(currentStroke.tool==="hl") redrawCanvas(); // strokes配列に追加前に一旦クリア
+  drawStrokes.push(currentStroke); redoStack=[]; currentStroke=null; isDrawing=false;
+  if(drawStrokes[drawStrokes.length-1]?.tool==="hl") redrawCanvas(); // 追加後に再描画で確定
+  updateUndoRedoBtns();
+}
+
+canvas.addEventListener("mousedown",onStart);
+canvas.addEventListener("mousemove",onMove);
+canvas.addEventListener("mouseup",onEnd);
+canvas.addEventListener("mouseleave",onEnd);
+canvas.addEventListener("touchstart",onStart,{passive:false});
+canvas.addEventListener("touchmove",onMove,{passive:false});
+canvas.addEventListener("touchend",onEnd,{passive:false});
+canvas.addEventListener("touchcancel",onEnd,{passive:false});
+
+function getCanvasDataURL(){
+  const tmp=document.createElement("canvas");
+  tmp.width=canvas.width; tmp.height=canvas.height;
+  const tc=tmp.getContext("2d");
+  tc.fillStyle=CARD_COLORS[editorColor].bg; tc.fillRect(0,0,tmp.width,tmp.height);
+  tc.drawImage(canvas,0,0);
+  return tmp.toDataURL("image/png");
+}
+
+// ── TOOL UI ────────────────────────────────────────────────
+function updateUndoRedoBtns(){
+  const u=document.getElementById("undo-btn"), r=document.getElementById("redo-btn");
+  if(u) u.disabled=drawStrokes.length===0;
+  if(r) r.disabled=redoStack.length===0;
+}
+
+function updateToolUI(){
+  document.getElementById("tool-pen").classList.toggle("active",drawTool==="pen");
+  document.getElementById("tool-hl").classList.toggle("active",drawTool==="hl");
+  document.getElementById("tool-eraser").classList.toggle("active",drawTool==="eraser");
+  const curSize = drawTool==="eraser" ? eraserSize : drawTool==="hl" ? hlSize : penSize;
+  const dotSize=Math.max(4,Math.min(curSize,20));
+  const dp=document.getElementById("size-dot-preview");
+  if(dp){
+    dp.style.width=dotSize+"px"; dp.style.height=dotSize+"px";
+    // 蛍光ペン時はドットを角丸なしで半透明表示
+    if(drawTool==="hl"){ dp.style.borderRadius="3px"; dp.style.opacity=String(hlOpacity); }
+    else { dp.style.borderRadius="50%"; dp.style.opacity="1"; }
+  }
+  const cp=document.getElementById("color-preview-btn");
+  if(cp){
+    if(drawTool==="hl"){
+      const r=parseInt(penColor.slice(1,3),16),g=parseInt(penColor.slice(3,5),16),b=parseInt(penColor.slice(5,7),16);
+      cp.style.background=`rgba(${r},${g},${b},${hlOpacity})`;
+    } else { cp.style.background=penColor; }
+  }
+  updateUndoRedoBtns();
+}
+
+document.getElementById("tool-pen").addEventListener("click",()=>{ drawTool="pen"; closePopovers(); updateToolUI(); });
+document.getElementById("tool-hl").addEventListener("click",()=>{ drawTool="hl"; closePopovers(); updateToolUI(); });
+document.getElementById("tool-eraser").addEventListener("click",()=>{ drawTool="eraser"; closePopovers(); updateToolUI(); });
+document.getElementById("color-preview-btn").addEventListener("click",()=>togglePanel("color"));
+document.getElementById("size-preview-btn").addEventListener("click",()=>togglePanel("size"));
+document.getElementById("undo-btn").addEventListener("click",()=>{
+  if(drawStrokes.length){ redoStack.push(drawStrokes.pop()); redrawCanvas(); updateUndoRedoBtns(); }
+});
+document.getElementById("redo-btn").addEventListener("click",()=>{
+  if(redoStack.length){ drawStrokes.push(redoStack.pop()); redrawCanvas(); updateUndoRedoBtns(); }
+});
+document.getElementById("clear-btn").addEventListener("click",()=>{
+  if(confirm("手書きをすべて消しますか？")){ redoStack=[...redoStack,...drawStrokes.reverse()]; drawStrokes=[]; redrawCanvas(); updateUndoRedoBtns(); }
+});
+
+// Close popovers when tapping canvas
+canvas.addEventListener("touchstart",()=>{ if(openPanel) closePopovers(); },{passive:true,capture:true});
+canvas.addEventListener("mousedown",()=>{ if(openPanel) closePopovers(); },{capture:true});
+
+document.querySelectorAll(".mode-tab").forEach(b=>b.addEventListener("click",()=>setEditorMode(b.dataset.mode)));
+
+// ── EDITOR EVENTS ──────────────────────────────────────────
+document.getElementById("new-btn").addEventListener("click",()=>openEditor(null));
+document.getElementById("editor-back").addEventListener("click",()=>closeEditor());
+document.getElementById("save-btn").addEventListener("click",saveNote);
+document.getElementById("pin-btn").addEventListener("click",()=>{ editorPinned=!editorPinned; updatePinBtn(); });
+document.getElementById("search-input").addEventListener("input",e=>{ searchQuery=e.target.value; renderNotes(); });
+
+document.addEventListener("keydown",e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key==="s"){ e.preventDefault(); if(document.getElementById("editor-view").classList.contains("visible")) saveNote(); }
+  if(e.key==="Escape"){ if(document.getElementById("editor-view").classList.contains("visible")) closeEditor(); }
+  if((e.metaKey||e.ctrlKey)&&e.shiftKey&&e.key==="z"&&editorMode==="draw"){ e.preventDefault(); if(redoStack.length){ drawStrokes.push(redoStack.pop()); redrawCanvas(); updateUndoRedoBtns(); } }
+  else if((e.metaKey||e.ctrlKey)&&e.key==="z"&&editorMode==="draw"){ e.preventDefault(); if(drawStrokes.length){ redoStack.push(drawStrokes.pop()); redrawCanvas(); updateUndoRedoBtns(); } }
+});
+
+window.addEventListener("resize",()=>{ if(editorMode==="draw"){ resizeCanvas(); } });
+
+// ── PWA ────────────────────────────────────────────────────
+window.addEventListener("beforeinstallprompt",e=>{ e.preventDefault(); deferredPrompt=e; const t=document.getElementById("install-toast"); t.classList.add("visible"); setTimeout(()=>t.classList.remove("visible"),6000); });
+document.getElementById("install-toast").addEventListener("click",async()=>{ if(!deferredPrompt)return; deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; document.getElementById("install-toast").classList.remove("visible"); });
+window.addEventListener("appinstalled",()=>{ document.getElementById("install-toast").classList.remove("visible"); deferredPrompt=null; });
+
+// ── INIT ───────────────────────────────────────────────────
+loadNotes(); renderAll(); updateToolUI();
+// tags-stickyのtop値をlist-headerの高さに合わせる
+const _hdr=document.getElementById("list-header");
+const _sticky=document.querySelector(".tags-sticky");
+function _updateStickyTop(){
+  if(_hdr&&_sticky) _sticky.style.top=_hdr.offsetHeight+"px";
+}
+_updateStickyTop();
+window.addEventListener("resize",_updateStickyTop);
+if("serviceWorker"in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+</script>
+</body>
+</html>
